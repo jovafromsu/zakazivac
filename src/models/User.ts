@@ -30,11 +30,13 @@ const userSchema = new mongoose.Schema<IUser>({
     type: String,
     required: false, // Optional for OAuth users
   },
-  roles: [{
-    type: String,
-    enum: ['client', 'provider', 'admin'],
+  roles: {
+    type: [{
+      type: String,
+      enum: ['client', 'provider', 'admin'],
+    }],
     default: ['client'],
-  }],
+  },
   emailVerified: {
     type: Boolean,
     default: false,

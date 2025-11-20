@@ -70,9 +70,15 @@ export async function GET(request: NextRequest) {
 
 ### Local Development
 ```bash
-npm run dev  # Turbopack-enabled development server
-# Access Swagger UI: http://localhost:3000/api-docs
-# Static HTML version: http://localhost:3000/api-docs.html
+npm run dev     # Turbopack-enabled development server
+npm run build   # Production build with type checking
+npm run test    # Jest test suite (141 model tests + API tests)
+npm run lint    # ESLint with Next.js rules
+
+# Development URLs
+# http://localhost:3000 - Main app
+# http://localhost:3000/api-docs - Interactive Swagger UI
+# http://localhost:3000/api-docs.html - Static API documentation
 ```
 
 ### API Documentation
@@ -98,28 +104,71 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/api/integrations/google/callback
 
 ## Key File Locations
 
-### Models (`src/models/`)
-- **User.ts**: Multi-role authentication (client/provider)
+### Models (`src/models/`) - All have comprehensive test coverage
+- **User.ts**: Multi-role authentication (client/provider/admin)
 - **ProviderProfile.ts**: Business info + `availabilitySettings` (Mixed field)
-- **Service.ts**: Provider services with pricing/duration
+- **Service.ts**: Provider services with pricing/duration validation
 - **Booking.ts**: Appointments with Google Calendar sync status
-- **ProviderGoogleIntegration.ts**: OAuth tokens storage
+- **Category.ts**: Service categories with slug auto-generation
+- **ProviderGoogleIntegration.ts**: OAuth tokens with refresh handling
 
 ### API Routes (`src/app/api/`)
 - **Providers**: Public listings filter by `isActive: true`
 - **Provider profile**: Protected routes for profile management
 - **Booking**: Slot generation + reservation system
+- **Admin**: Stats, user management (requires admin role)
+- **Auth**: Registration, verification, NextAuth integration
 - **Integrations**: Google Calendar OAuth flow
 
 ### Services (`src/services/calendar/`)
 - **googleCalendarService.ts**: Calendar API interactions
 - **slotGeneration.ts**: Available time slot calculation
 
+### Testing Infrastructure (`tests/`)
+- **setupTests.ts**: MongoDB Memory Server configuration
+- **utils/testHelpers.ts**: Mock factories for all models
+- **utils/databaseUtils.ts**: Database cleanup and seeding
+- **utils/nextAuthMock.ts**: NextAuth testing utilities
+- **models/**: Complete unit tests (141 passing tests)
+- **api/**: Integration tests (NextAuth mocking challenges)
+
 ### Accessibility (`src/components/ui/Accessible*.tsx`)
 - **AccessibilityProvider.tsx**: App-wide a11y context + toolbar
 - **AccessibleComponents.tsx**: Modal, Alert, Tabs with ARIA
 - **AccessibleFormComponents.tsx**: Form fields with proper labeling
 - **AccessibleFeedback.tsx**: Toast, Progress, Loading with screen reader support
+
+## Critical Testing Patterns
+
+### Model Testing (Industry Standard)
+```typescript
+// Always use this pattern for model tests
+import DatabaseTestUtils from '../utils/databaseUtils'
+import { createMockUser } from '../utils/testHelpers'
+
+beforeEach(async () => {
+  await DatabaseTestUtils.cleanDatabase() // Required for isolation
+})
+
+// Test validation thoroughly
+it('should enforce required fields', async () => {
+  const invalidData = createMockUser({ email: undefined })
+  await expect(User.create(invalidData)).rejects.toThrow(/email.*required/)
+})
+```
+
+### API Testing Challenges
+- **NextAuth Issue**: `getServerSession` cannot access headers in test environment
+- **Solution**: Mock `@/lib/adminAuth.requireAdminAuth` instead of NextAuth directly
+- **Pattern**: Always mock MongoDB connection to prevent conflicts
+
+### Test Data Factories
+Use consistent mock factories from `tests/utils/testHelpers.ts`:
+```typescript
+const user = createMockUser({ roles: ['admin'] })
+const provider = createMockProvider({ businessName: 'Test Business' })
+const session = createMockSession(user)
+```
 
 ## Common Gotchas
 
@@ -167,7 +216,50 @@ interface Session {
 
 ## Testing & Debugging
 
-### API Testing
+### Jest Test Framework (Industry Standard Setup)
+```bash
+npm test                    # Run all tests
+npm test -- --watch        # Watch mode for development
+npm test -- tests/models/  # Run specific test suite
+npm test -- --coverage     # Generate coverage report
+```
+
+#### **Test Structure & Patterns**
+- **MongoDB Memory Server**: Isolated in-memory database for each test
+- **Mock Factories**: Use `createMockUser()`, `createMockProvider()` from `tests/utils/testHelpers.ts`
+- **Database Cleanup**: Automatic via `DatabaseTestUtils.cleanDatabase()` in `beforeEach`
+- **Coverage Threshold**: 70% minimum configured in `jest.config.js`
+
+#### **Model Tests (✅ 141/141 passing)**
+```typescript
+// Pattern for model testing
+import DatabaseTestUtils from '../utils/databaseUtils'
+import { createMockUser } from '../utils/testHelpers'
+
+beforeEach(async () => {
+  await DatabaseTestUtils.cleanDatabase() // Clean slate per test
+})
+
+it('should validate required fields', async () => {
+  const userData = createMockUser({ email: undefined })
+  await expect(User.create(userData)).rejects.toThrow()
+})
+```
+
+#### **API Tests (NextAuth Mocking Challenges)**
+- **Current Issue**: NextAuth `getServerSession` fails in test environment
+- **Workaround**: Mock `@/lib/adminAuth` directly instead of NextAuth
+```typescript
+// Successful API test pattern
+jest.mock('@/lib/adminAuth', () => ({
+  requireAdminAuth: jest.fn(),
+}))
+
+const mockRequireAdminAuth = require('@/lib/adminAuth').requireAdminAuth
+mockRequireAdminAuth.mockResolvedValue({ id: '123', roles: ['admin'] })
+```
+
+### API Testing (Manual)
 - Use Swagger UI at `/api-docs` for interactive testing
 - Import OpenAPI spec from `/api/docs` into Postman/Insomnia
 - Check console for authentication errors in dev tools
@@ -191,7 +283,12 @@ interface Session {
 - Verify calendar event creation after bookings
 - Monitor API quota usage in Google Cloud Console
 
-## Utility Scripts & Admin Tools
+### Testing Documentation
+- **`TESTING.md`**: Complete testing guide with patterns and examples
+- **`README.md`**: Test section with coverage statistics and commands
+- **`jest.config.js`**: Next.js optimized Jest configuration
+
+### Utility Scripts & Admin Tools
 
 ### Setup & Testing Scripts
 - **`create-admin.js`**: Create admin user with email `admin@zakazivac.app` and password `admin123`
